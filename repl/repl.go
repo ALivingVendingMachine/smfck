@@ -9,7 +9,7 @@ import (
 
 const PROMPT = ">> "
 
-func Start(in io.Reader, out io.Writer) {
+func Start(in io.Reader, out io.Writer, cells int) {
 	scanner := bufio.NewScanner(in)
 
 	for {
@@ -20,7 +20,7 @@ func Start(in io.Reader, out io.Writer) {
 		}
 
 		line := scanner.Text()
-		p := program.New(line)
+		p := program.New(line, cells)
 		p.Run(in, out)
 		fmt.Printf("\n")
 	}
