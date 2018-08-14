@@ -4,101 +4,82 @@ import (
 	"bufio"
 	"errors"
 	"fmt"
-	"io"
+	"os"
 )
 
-// This is sort of a cheat.  The parser is also kinda the interpreter, because
-// I'm not going to an IL.  Oops.
-
+// Program represents a complete brainfuck program, with the commands and memory
+// cells
 type Program struct {
-	tok   []byte
-	cells []byte
-	numcells int
+	commands string
+	cells    []byte
+	numCells int
 }
 
-func New(input string, cellSize int) *Program {
-	s := make([]byte, cellSize)
-	p := &Program{tok: []byte(input), cells: s, numcells: cellSize}
-	return p
-}
-
-func (p *Program) Run(in io.Reader, out io.Writer) []byte {
-	err := p.Parse(0, in, out)
-	if err != nil {
-		fmt.Printf("parse error: %v\n", err)
+// New returns a new brainfuck program
+func New(comIn string, numCells int) (Program, error) {
+	if numCells < 1 {
+		return Program{}, fmt.Errorf("number of cells cannot be zero or negative")
 	}
-	return p.cells
+	s := make([]byte, numCells)
+	return Program{commands: comIn, cells: s, numCells: numCells}, nil
 }
 
-func (p *Program) restore() {
-	for i := 0; i < len(p.tok); i++ {
-		if p.tok[i] == '}' {
-			p.tok[i] = ']'
-		} else if p.tok[i] == '{' {
-			p.tok[i] = '['
-		}
-	}
-}
+// Run runs a given brainfuck program
+func (p *Program) Run() (string, error) {
+	var tmp int
+	var ip int
+	var dp int
+	var ret string
+	var err error
 
-func (p *Program) Parse(pos int, in io.Reader, out io.Writer) error {
-	cellptr := 0
-	for i := pos; i < len(p.tok); {
-		switch p.tok[i] {
-		case '>':
-			cellptr++
-			if cellptr == p.numcells {
-				cellptr = 0
-			}
-			i++
-		case '<':
-			cellptr--
-			if cellptr < 0 {
-				cellptr = p.numcells - 1
-			}
-			i++
-		case '+':
-			p.cells[cellptr]++
-			i++
-		case '-':
-			p.cells[cellptr]--
-			i++
-		case ',':
-			reader := bufio.NewReader(in)
-			input, _ := reader.ReadString('\n')
-			p.cells[cellptr] = []byte(input)[0]
-			i++
-		case '.':
-			if p.cells[cellptr] >= 33 && p.cells[cellptr] <= 126 {
-				fmt.Fprintf(out, "%c", p.cells[cellptr])
-			} else {
-				fmt.Fprintf(out, "%d", p.cells[cellptr])
-			}
-			i++
-		case '[':
-			ride := -1
-			tmp := i + 1
-			for tmp < len(p.tok) {
-				if p.tok[tmp] == ']' {
-					ride = tmp
+	for ip < len(p.commands) {
+		if string(p.commands[ip]) == "," {
+			reader := bufio.NewReader(os.Stdin)
+			input, _ := reader.ReadByte()
+			p.cells[dp] = input
+		} else if string(p.commands[ip]) == "." {
+			fmt.Printf("%s", string(p.cells[dp]))
+			ret = ret + string(p.cells[dp])
+		} else if string(p.commands[ip]) == ">" {
+			dp++
+		} else if string(p.commands[ip]) == "<" {
+			dp--
+		} else if string(p.commands[ip]) == "+" {
+			p.cells[dp]++
+		} else if string(p.commands[ip]) == "-" {
+			p.cells[dp]--
+		} else if string(p.commands[ip]) == "[" {
+			if p.cells[dp] == 0 {
+				ip++
+				for tmp > 0 || string(p.commands[ip]) != "]" {
+					if string(p.commands[ip]) == "[" {
+						tmp++
+					}
+					if string(p.commands[ip]) == "]" {
+						tmp--
+					}
+					ip++
 				}
-				tmp++
 			}
-			if ride == -1 {
-				return errors.New("[ without ]")
+		} else if string(p.commands[ip]) == "]" {
+			if p.cells[dp] != 0 {
+				ip--
+				for tmp > 0 || string(p.commands[ip]) != "[" {
+					if string(p.commands[ip]) == "]" {
+						tmp++
+					}
+					if string(p.commands[ip]) == "[" {
+						tmp--
+					}
+					ip--
+				}
+				ip--
 			}
-			if p.cells[cellptr] == 0 {
-				p.tok[i] = '{'
-				i = ride + 1
-				p.tok[ride] = '}'
-			} else {
-				i++
-			}
-		case ']':
-			p.tok[i] = '}' // Error?  This means ] without [, which shouldn't happen...
-		default:
-			i++
+		} else {
+			fmt.Fprintf(os.Stderr, "trivia byte: %c", p.commands[ip])
+			err = errors.New("non-token character encountered")
 		}
+		ip++
 	}
-	p.restore()
-	return nil
+	return ret, err
 }
